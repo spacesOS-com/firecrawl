@@ -27,6 +27,7 @@ services:
       retries: 5
 
   postgres:
+    # IMPORTANT: this image initializes NUQ schema on FIRST boot
     build: ./apps/nuq-postgres
     restart: unless-stopped
     environment:
@@ -64,14 +65,7 @@ services:
   api:
     build: ./apps/api
     restart: unless-stopped
-    command: >
-      sh -c "
-      echo '⏳ Waiting for Postgres...' &&
-      sleep 10 &&
-      cd apps/api &&
-      pnpm nuq:init &&
-      node dist/src/harness.js --start-docker
-      "
+    command: node dist/src/harness.js --start-docker
     ports:
       - "${PORT:-3002}:3002"
     environment:
@@ -81,7 +75,7 @@ services:
       ENV: production
       LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
 
-      # Database
+      # Database (NUQ tables already created by postgres image)
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-firecrawl}
@@ -102,7 +96,7 @@ services:
       USE_DB_AUTHENTICATION: ${USE_DB_AUTHENTICATION:-false}
       BULL_AUTH_KEY: ${BULL_AUTH_KEY:-changeme}
 
-      # Workers (low-CPU friendly)
+      # Workers (safe defaults for small VPS)
       NUM_WORKERS_PER_QUEUE: 1
       MAX_CONCURRENT_JOBS: 1
       CRAWL_CONCURRENT_REQUESTS: 3
