@@ -52,16 +52,16 @@ services:
       PROXY_USERNAME: ${PROXY_USERNAME}
       PROXY_PASSWORD: ${PROXY_PASSWORD}
       BLOCK_MEDIA: ${BLOCK_MEDIA}
-      MAX_CONCURRENT_PAGES: ${CRAWL_CONCURRENT_REQUESTS:-10}
+      MAX_CONCURRENT_PAGES: ${CRAWL_CONCURRENT_REQUESTS:-5}
     networks:
       - firecrawl-network
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 4G
-        reservations:
+          cpus: '0.8'
           memory: 2G
+        reservations:
+          memory: 1G
 
   api:
     build: ./apps/api
@@ -108,11 +108,11 @@ services:
       MODEL_EMBEDDING_NAME: ${MODEL_EMBEDDING_NAME}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
       
-      # Workers
-      NUM_WORKERS_PER_QUEUE: ${NUM_WORKERS_PER_QUEUE:-8}
-      CRAWL_CONCURRENT_REQUESTS: ${CRAWL_CONCURRENT_REQUESTS:-10}
-      MAX_CONCURRENT_JOBS: ${MAX_CONCURRENT_JOBS:-5}
-      BROWSER_POOL_SIZE: ${BROWSER_POOL_SIZE:-5}
+      # Workers (optimized for 2 CPU server)
+      NUM_WORKERS_PER_QUEUE: ${NUM_WORKERS_PER_QUEUE:-4}
+      CRAWL_CONCURRENT_REQUESTS: ${CRAWL_CONCURRENT_REQUESTS:-5}
+      MAX_CONCURRENT_JOBS: ${MAX_CONCURRENT_JOBS:-2}
+      BROWSER_POOL_SIZE: ${BROWSER_POOL_SIZE:-2}
       EXTRACT_WORKER_PORT: 3004
       WORKER_PORT: 3005
       
@@ -153,10 +153,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4.0'
-          memory: 8G
-        reservations:
+          cpus: '1.0'
           memory: 4G
+        reservations:
+          memory: 2G
 
 networks:
   firecrawl-network:
