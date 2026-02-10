@@ -1,0 +1,167 @@
+name: firecrawl
+
+services:
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+    command: redis-server --bind 0.0.0.0
+    networks:
+      - firecrawl-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    networks:
+      - firecrawl-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+  postgres:
+    build: ./apps/nuq-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-firecrawl}
+    networks:
+      - firecrawl-network
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  playwright-service:
+    build: ./apps/playwright-service-ts
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      PROXY_SERVER: ${PROXY_SERVER}
+      PROXY_USERNAME: ${PROXY_USERNAME}
+      PROXY_PASSWORD: ${PROXY_PASSWORD}
+      BLOCK_MEDIA: ${BLOCK_MEDIA}
+      MAX_CONCURRENT_PAGES: ${CRAWL_CONCURRENT_REQUESTS:-10}
+    networks:
+      - firecrawl-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          memory: 2G
+
+  api:
+    build: ./apps/api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3002}:3002"
+    environment:
+      # Core Settings
+      HOST: "0.0.0.0"
+      PORT: 3002
+      ENV: production
+      
+      # Database
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-firecrawl}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      
+      # Redis
+      REDIS_URL: redis://redis:6379
+      REDIS_RATE_LIMIT_URL: redis://redis:6379
+      
+      # RabbitMQ
+      NUQ_RABBITMQ_URL: amqp://rabbitmq:5672
+      
+      # Services
+      PLAYWRIGHT_MICROSERVICE_URL: http://playwright-service:3000/scrape
+      
+      # Authentication
+      USE_DB_AUTHENTICATION: ${USE_DB_AUTHENTICATION:-false}
+      BULL_AUTH_KEY: ${BULL_AUTH_KEY}
+      TEST_API_KEY: ${TEST_API_KEY}
+      
+      # Supabase (Optional)
+      SUPABASE_ANON_TOKEN: ${SUPABASE_ANON_TOKEN}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_TOKEN: ${SUPABASE_SERVICE_TOKEN}
+      
+      # AI Features (Optional)
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL}
+      MODEL_NAME: ${MODEL_NAME}
+      MODEL_EMBEDDING_NAME: ${MODEL_EMBEDDING_NAME}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      
+      # Workers
+      NUM_WORKERS_PER_QUEUE: ${NUM_WORKERS_PER_QUEUE:-8}
+      CRAWL_CONCURRENT_REQUESTS: ${CRAWL_CONCURRENT_REQUESTS:-10}
+      MAX_CONCURRENT_JOBS: ${MAX_CONCURRENT_JOBS:-5}
+      BROWSER_POOL_SIZE: ${BROWSER_POOL_SIZE:-5}
+      EXTRACT_WORKER_PORT: 3004
+      WORKER_PORT: 3005
+      
+      # Logging
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+      
+      # Proxy (Optional)
+      PROXY_SERVER: ${PROXY_SERVER}
+      PROXY_USERNAME: ${PROXY_USERNAME}
+      PROXY_PASSWORD: ${PROXY_PASSWORD}
+      
+      # Search (Optional)
+      SEARXNG_ENDPOINT: ${SEARXNG_ENDPOINT}
+      SEARXNG_ENGINES: ${SEARXNG_ENGINES}
+      SEARXNG_CATEGORIES: ${SEARXNG_CATEGORIES}
+      
+      # Webhooks
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+      SELF_HOSTED_WEBHOOK_URL: ${SELF_HOSTED_WEBHOOK_URL}
+      
+      # Google Search API
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GOOGLE_CX: ${GOOGLE_CX}
+      SEARCH_ENGINE: ${SEARCH_ENGINE:-google}
+    
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      playwright-service:
+        condition: service_started
+    networks:
+      - firecrawl-network
+    command: node dist/src/harness.js --start-docker
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          memory: 4G
+
+networks:
+  firecrawl-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
