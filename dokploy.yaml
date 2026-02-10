@@ -68,6 +68,7 @@ services:
       sh -c "
       echo '⏳ Waiting for Postgres...' &&
       sleep 10 &&
+      cd apps/api &&
       pnpm nuq:init &&
       node dist/src/harness.js --start-docker
       "
