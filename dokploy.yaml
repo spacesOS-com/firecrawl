@@ -18,13 +18,13 @@ services:
     restart: unless-stopped
     networks:
       - firecrawl-network
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
       interval: 10s
       timeout: 5s
       retries: 5
-    volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
 
   postgres:
     build: ./apps/nuq-postgres
@@ -49,17 +49,14 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3000
-      PROXY_SERVER: ${PROXY_SERVER}
-      PROXY_USERNAME: ${PROXY_USERNAME}
-      PROXY_PASSWORD: ${PROXY_PASSWORD}
-      BLOCK_MEDIA: ${BLOCK_MEDIA}
-      MAX_CONCURRENT_PAGES: ${CRAWL_CONCURRENT_REQUESTS:-5}
+      BLOCK_MEDIA: ${BLOCK_MEDIA:-true}
+      MAX_CONCURRENT_PAGES: ${CRAWL_CONCURRENT_REQUESTS:-3}
     networks:
       - firecrawl-network
     deploy:
       resources:
         limits:
-          cpus: '0.8'
+          cpus: "0.75"
           memory: 2G
         reservations:
           memory: 1G
@@ -67,78 +64,54 @@ services:
   api:
     build: ./apps/api
     restart: unless-stopped
+    command: >
+      sh -c "
+      echo '⏳ Waiting for Postgres...' &&
+      sleep 10 &&
+      node dist/src/services/nuq/init.js &&
+      node dist/src/harness.js --start-docker
+      "
     ports:
       - "${PORT:-3002}:3002"
     environment:
-      # Core Settings
-      HOST: "0.0.0.0"
+      # Core
+      HOST: 0.0.0.0
       PORT: 3002
       ENV: production
-      
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+
       # Database
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-firecrawl}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      
+      POSTGRES_DB: ${POSTGRES_DB:-firecrawl}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+
       # Redis
       REDIS_URL: redis://redis:6379
       REDIS_RATE_LIMIT_URL: redis://redis:6379
-      
+
       # RabbitMQ
       NUQ_RABBITMQ_URL: amqp://rabbitmq:5672
-      
+
       # Services
       PLAYWRIGHT_MICROSERVICE_URL: http://playwright-service:3000/scrape
-      
-      # Authentication
+
+      # Auth
       USE_DB_AUTHENTICATION: ${USE_DB_AUTHENTICATION:-false}
-      BULL_AUTH_KEY: ${BULL_AUTH_KEY}
-      TEST_API_KEY: ${TEST_API_KEY}
-      
-      # Supabase (Optional)
-      SUPABASE_ANON_TOKEN: ${SUPABASE_ANON_TOKEN}
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_SERVICE_TOKEN: ${SUPABASE_SERVICE_TOKEN}
-      
-      # AI Features (Optional)
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL}
-      MODEL_NAME: ${MODEL_NAME}
-      MODEL_EMBEDDING_NAME: ${MODEL_EMBEDDING_NAME}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
-      
-      # Workers (optimized for 2 CPU server)
-      NUM_WORKERS_PER_QUEUE: ${NUM_WORKERS_PER_QUEUE:-4}
-      CRAWL_CONCURRENT_REQUESTS: ${CRAWL_CONCURRENT_REQUESTS:-5}
-      MAX_CONCURRENT_JOBS: ${MAX_CONCURRENT_JOBS:-2}
-      BROWSER_POOL_SIZE: ${BROWSER_POOL_SIZE:-2}
-      EXTRACT_WORKER_PORT: 3004
-      WORKER_PORT: 3005
-      
-      # Logging
-      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
-      
-      # Proxy (Optional)
-      PROXY_SERVER: ${PROXY_SERVER}
-      PROXY_USERNAME: ${PROXY_USERNAME}
-      PROXY_PASSWORD: ${PROXY_PASSWORD}
-      
-      # Search (Optional)
-      SEARXNG_ENDPOINT: ${SEARXNG_ENDPOINT}
-      SEARXNG_ENGINES: ${SEARXNG_ENGINES}
-      SEARXNG_CATEGORIES: ${SEARXNG_CATEGORIES}
-      
-      # Webhooks
-      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
-      SELF_HOSTED_WEBHOOK_URL: ${SELF_HOSTED_WEBHOOK_URL}
-      
-      # Google Search API
+      BULL_AUTH_KEY: ${BULL_AUTH_KEY:-changeme}
+
+      # Workers (low-CPU friendly)
+      NUM_WORKERS_PER_QUEUE: 1
+      MAX_CONCURRENT_JOBS: 1
+      CRAWL_CONCURRENT_REQUESTS: 3
+      BROWSER_POOL_SIZE: 1
+
+      # Search
+      SEARCH_ENGINE: ${SEARCH_ENGINE:-google}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       GOOGLE_CX: ${GOOGLE_CX}
-      SEARCH_ENGINE: ${SEARCH_ENGINE:-google}
-    
+
     depends_on:
       redis:
         condition: service_healthy
@@ -150,11 +123,10 @@ services:
         condition: service_started
     networks:
       - firecrawl-network
-    command: node dist/src/harness.js --start-docker
     deploy:
       resources:
         limits:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 4G
         reservations:
           memory: 2G
