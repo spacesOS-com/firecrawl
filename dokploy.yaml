@@ -1,5 +1,4 @@
 name: firecrawl
-
 services:
   redis:
     image: redis:alpine
@@ -30,9 +29,9 @@ services:
     build: ./apps/nuq-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: firecrawl
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-firecrawl}
     networks:
       - firecrawl-network
     volumes:
@@ -49,8 +48,8 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3000
-      BLOCK_MEDIA: "true"
-      MAX_CONCURRENT_PAGES: 3
+      BLOCK_MEDIA: ${BLOCK_MEDIA:-true}
+      MAX_CONCURRENT_PAGES: ${CRAWL_CONCURRENT_REQUESTS:-3}
     networks:
       - firecrawl-network
     deploy:
@@ -58,56 +57,50 @@ services:
         limits:
           cpus: "0.75"
           memory: 2G
+        reservations:
+          memory: 1G
 
   api:
     build: ./apps/api
     restart: unless-stopped
     command: node dist/src/harness.js --start-docker
     ports:
-      - "3002:3002"
+      - "${PORT:-3002}:3002"
     environment:
       # Core
       HOST: 0.0.0.0
       PORT: 3002
       ENV: production
-      LOGGING_LEVEL: info
-
-      # Database
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+      # Database - FIXED: use service name
       POSTGRES_HOST: firecrawl-postgres
       POSTGRES_PORT: 5432
-      POSTGRES_DB: firecrawl
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-
+      POSTGRES_DB: ${POSTGRES_DB:-firecrawl}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       # Redis
       REDIS_URL: redis://redis:6379
       REDIS_RATE_LIMIT_URL: redis://redis:6379
-
       # RabbitMQ
       NUQ_RABBITMQ_URL: amqp://rabbitmq:5672
-
       # Services
       PLAYWRIGHT_MICROSERVICE_URL: http://playwright-service:3000/scrape
-
       # Auth
-      USE_DB_AUTHENTICATION: "false"
-      BULL_AUTH_KEY: changeme
-
-      # Workers (safe defaults)
+      USE_DB_AUTHENTICATION: ${USE_DB_AUTHENTICATION:-false}
+      BULL_AUTH_KEY: ${BULL_AUTH_KEY:-changeme}
+      # Workers
       NUM_WORKERS_PER_QUEUE: 1
       MAX_CONCURRENT_JOBS: 1
       CRAWL_CONCURRENT_REQUESTS: 3
       BROWSER_POOL_SIZE: 1
-
       # Search
-      SEARCH_ENGINE: google
+      SEARCH_ENGINE: ${SEARCH_ENGINE:-google}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       GOOGLE_CX: ${GOOGLE_CX}
-
     depends_on:
       redis:
         condition: service_healthy
-      firecrawl-postgres:
+      firecrawl-postgres:  # FIXED: use correct service name
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -120,6 +113,8 @@ services:
         limits:
           cpus: "1.0"
           memory: 4G
+        reservations:
+          memory: 2G
 
 networks:
   firecrawl-network:
